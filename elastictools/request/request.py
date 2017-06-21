@@ -509,6 +509,11 @@ def agg_avg_bucket(buckets_path, **kwargs):
     return {"avg_bucket": {"bucket_path": buckets_path}}
 
 
+@simple_value_agg
+def agg_bucket_selector(buckets_path, script, **kwargs):
+    return {"bucket_selector":  {"buckets_path": buckets_path, "script": script}}
+
+
 def agg_extended_stats(field, script=False, sigma=3,
                        getter_count=None, getter_min=None, getter_max=None, getter_avg=None,
                        getter_sum=None, getter_sum_of_squares=None, getter_variance=None,
