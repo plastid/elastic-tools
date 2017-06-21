@@ -535,15 +535,30 @@ def agg_stats_bucket(buckets_path, **kwargs):
 
 
 @simple_value_agg
+def agg_extended_stats_bucket(buckets_path, **kwargs):
+    return {"extended_stats_bucket": {"bucket_path": buckets_path}}
+
+
+@simple_value_agg
+def agg_cumulative_sum(buckets_path, **kwargs):
+    return {"cumulative_sum": {"bucket_path": buckets_path}}
+
+
+@simple_value_agg
 def agg_bucket_selector(buckets_path, script, **kwargs):
-    return {"bucket_selector":  {"buckets_path": buckets_path, "script": script}}
+    return {"bucket_selector": {"buckets_path": buckets_path, "script": script}}
+
+
+@simple_value_agg
+def agg_bucket_script(buckets_path, script, **kwargs):
+    return {"bucket_script": {"buckets_path": buckets_path, "script": script}}
 
 
 @simple_value_agg
 def agg_percentiles_bucket(buckets_path, percents=None, **kwargs):
     if percents is None:
         percents = [25.0, 50.0, 75.0]
-    return {"percentiles_bucket":  {"buckets_path": buckets_path, "percents": percents}}
+    return {"percentiles_bucket": {"buckets_path": buckets_path, "percents": percents}}
 
 
 def agg_extended_stats(field, script=False, sigma=3,
