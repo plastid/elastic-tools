@@ -539,6 +539,13 @@ def agg_bucket_selector(buckets_path, script, **kwargs):
     return {"bucket_selector":  {"buckets_path": buckets_path, "script": script}}
 
 
+@simple_value_agg
+def agg_percentiles_bucket(buckets_path, percents=None, **kwargs):
+    if percents is None:
+        percents = [25.0, 50.0, 75.0]
+    return {"percentiles_bucket":  {"buckets_path": buckets_path, "percents": percents}}
+
+
 def agg_extended_stats(field, script=False, sigma=3,
                        getter_count=None, getter_min=None, getter_max=None, getter_avg=None,
                        getter_sum=None, getter_sum_of_squares=None, getter_variance=None,
