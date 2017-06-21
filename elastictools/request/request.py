@@ -510,6 +510,31 @@ def agg_avg_bucket(buckets_path, **kwargs):
 
 
 @simple_value_agg
+def agg_derivative_bucket(buckets_path, **kwargs):
+    return {"derivative_bucket": {"bucket_path": buckets_path}}
+
+
+@simple_value_agg
+def agg_max_bucket(buckets_path, **kwargs):
+    return {"max_bucket": {"bucket_path": buckets_path}}
+
+
+@simple_value_agg
+def agg_min_bucket(buckets_path, **kwargs):
+    return {"min_bucket": {"bucket_path": buckets_path}}
+
+
+@simple_value_agg
+def agg_sum_bucket(buckets_path, **kwargs):
+    return {"sum_bucket": {"bucket_path": buckets_path}}
+
+
+@simple_value_agg
+def agg_stats_bucket(buckets_path, **kwargs):
+    return {"stats_bucket": {"bucket_path": buckets_path}}
+
+
+@simple_value_agg
 def agg_bucket_selector(buckets_path, script, **kwargs):
     return {"bucket_selector":  {"buckets_path": buckets_path, "script": script}}
 
