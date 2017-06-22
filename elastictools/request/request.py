@@ -506,42 +506,42 @@ def agg_value_count(field, script=False, **kwargs):
 
 @simple_value_agg
 def agg_avg_bucket(buckets_path, **kwargs):
-    return {"avg_bucket": {"bucket_path": buckets_path}}
+    return {"avg_bucket": {"buckets_path": buckets_path}}
 
 
 @simple_value_agg
 def agg_derivative_bucket(buckets_path, **kwargs):
-    return {"derivative_bucket": {"bucket_path": buckets_path}}
+    return {"derivative_bucket": {"buckets_path": buckets_path}}
 
 
 @simple_value_agg
 def agg_max_bucket(buckets_path, **kwargs):
-    return {"max_bucket": {"bucket_path": buckets_path}}
+    return {"max_bucket": {"buckets_path": buckets_path}}
 
 
 @simple_value_agg
 def agg_min_bucket(buckets_path, **kwargs):
-    return {"min_bucket": {"bucket_path": buckets_path}}
+    return {"min_bucket": {"buckets_path": buckets_path}}
 
 
 @simple_value_agg
 def agg_sum_bucket(buckets_path, **kwargs):
-    return {"sum_bucket": {"bucket_path": buckets_path}}
+    return {"sum_bucket": {"buckets_path": buckets_path}}
 
 
 @simple_value_agg
 def agg_stats_bucket(buckets_path, **kwargs):
-    return {"stats_bucket": {"bucket_path": buckets_path}}
+    return {"stats_bucket": {"buckets_path": buckets_path}}
 
 
 @simple_value_agg
 def agg_extended_stats_bucket(buckets_path, **kwargs):
-    return {"extended_stats_bucket": {"bucket_path": buckets_path}}
+    return {"extended_stats_bucket": {"buckets_path": buckets_path}}
 
 
 @simple_value_agg
 def agg_cumulative_sum(buckets_path, **kwargs):
-    return {"cumulative_sum": {"bucket_path": buckets_path}}
+    return {"cumulative_sum": {"buckets_path": buckets_path}}
 
 
 @simple_value_agg
