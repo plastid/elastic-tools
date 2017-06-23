@@ -504,64 +504,163 @@ def agg_value_count(field, script=False, **kwargs):
     return {"value_count": {("script" if script else "field"): field}}
 
 
-@simple_value_agg
-def agg_avg_bucket(buckets_path, **kwargs):
-    return {"avg_bucket": {"buckets_path": buckets_path}}
+##############################################################################################
+# PIPELINE AGGS                                                                              #
+##############################################################################################
 
 
 @simple_value_agg
-def agg_derivative_bucket(buckets_path, **kwargs):
-    return {"derivative_bucket": {"buckets_path": buckets_path}}
+def agg_avg_bucket(buckets_path, format=None, gap_policy=None, **kwargs):
+    body = {
+        "avg_bucket": {
+           "buckets_path": buckets_path,
+            **({"format": format} if format is not None else {}),
+            **({"gap_policy": gap_policy} if gap_policy is not None else {})
+        }
+    }
+    return body
 
 
 @simple_value_agg
-def agg_max_bucket(buckets_path, **kwargs):
-    return {"max_bucket": {"buckets_path": buckets_path}}
+def agg_derivative_bucket(buckets_path, format=None, gap_policy=None, **kwargs):
+    body = {
+        "derivative_bucket": {
+            "buckets_path": buckets_path,
+            **({"format": format} if format is not None else {}),
+            **({"gap_policy": gap_policy} if gap_policy is not None else {})
+        }
+    }
+
+    return body
+
+
+def agg_max_bucket(buckets_path, format=None, gap_policy=None, getter_keys=None, **kwargs):
+    getters = {}
+    add_getter(getters, getter_keys, "keys")
+    body = {
+        "max_bucket": {
+            "buckets_path": buckets_path,
+            **({"format": format} if format is not None else {}),
+            **({"gap_policy": gap_policy} if gap_policy is not None else {})
+        }
+    }
+    return {"body": body, "getters": getters}
+
+
+def agg_min_bucket(buckets_path, format=None, gap_policy=None, getter_keys=None, **kwargs):
+    getters = {}
+    add_getter(getters, getter_keys, "keys")
+    body = {
+        "min_bucket": {
+            "buckets_path": buckets_path,
+            **({"format": format} if format is not None else {}),
+            **({"gap_policy": gap_policy} if gap_policy is not None else {})
+        }
+    }
+    return {"body": body, "getters": getters}
 
 
 @simple_value_agg
-def agg_min_bucket(buckets_path, **kwargs):
-    return {"min_bucket": {"buckets_path": buckets_path}}
+def agg_sum_bucket(buckets_path, format=None, gap_policy=None, **kwargs):
+    body = {
+        "sum_bucket": {
+            "buckets_path": buckets_path,
+            **({"format": format} if format is not None else {}),
+            **({"gap_policy": gap_policy} if gap_policy is not None else {})
+        }
+    }
+    return body
+
+
+
+def agg_stats_bucket(buckets_path, format=None, gap_policy=None,
+                       getter_count=None, getter_min=None, getter_max=None, getter_avg=None,
+                       getter_sum=None, **kwargs):
+    getters = {}
+    add_getter(getters, getter_count, "count")
+    add_getter(getters, getter_min, "min")
+    add_getter(getters, getter_max, "max")
+    add_getter(getters, getter_avg, "avg")
+    add_getter(getters, getter_sum, "sum")
+    body = {
+        "stats_bucket": {
+            "buckets_path": buckets_path,
+            **({"format": format} if format is not None else {}),
+            **({"gap_policy": gap_policy} if gap_policy is not None else {})
+        }
+    }
+    return {"body": body, "getters": getters}
 
 
 @simple_value_agg
-def agg_sum_bucket(buckets_path, **kwargs):
-    return {"sum_bucket": {"buckets_path": buckets_path}}
+def agg_cumulative_sum(buckets_path, format=None, **kwargs):
+    body = {
+        "cumulative_sum": {
+            "buckets_path": buckets_path,
+            **({"format": format} if format is not None else {})
+        }
+    }
+    return body
 
 
-@simple_value_agg
-def agg_stats_bucket(buckets_path, **kwargs):
-    return {"stats_bucket": {"buckets_path": buckets_path}}
-
-
-@simple_value_agg
-def agg_extended_stats_bucket(buckets_path, **kwargs):
-    return {"extended_stats_bucket": {"buckets_path": buckets_path}}
-
-
-@simple_value_agg
-def agg_cumulative_sum(buckets_path, **kwargs):
-    return {"cumulative_sum": {"buckets_path": buckets_path}}
-
-
-@simple_value_agg
-def agg_bucket_selector(buckets_path, script, **kwargs):
+def agg_bucket_selector(buckets_path, script, gap_policy=None **kwargs):
+    body = {
+        "bucket_selector": {
+            "buckets_path": buckets_path,
+            "script": script,
+            **({"gap_policy": gap_policy} if gap_policy is not None else {}),
+        }
+    }
     return {"bucket_selector": {"buckets_path": buckets_path, "script": script}}
 
 
 @simple_value_agg
-def agg_bucket_script(buckets_path, script, **kwargs):
+def agg_bucket_script(buckets_path, script, gap_policy=None, format=None **kwargs):
+    body = {
+        "bucket_script": {
+            "buckets_path": buckets_path,
+            "script": script,
+            **({"format": format} if format is not None else {}),
+            **({"gap_policy": gap_policy} if gap_policy is not None else {}),
+        }
+    }
     return {"bucket_script": {"buckets_path": buckets_path, "script": script}}
 
 
-@simple_value_agg
-def agg_percentiles_bucket(buckets_path, percents=None, **kwargs):
-    if percents is None:
-        percents = [25.0, 50.0, 75.0]
-    return {"percentiles_bucket": {"buckets_path": buckets_path, "percents": percents}}
+#@simple_value_agg
+#def agg_percentiles_bucket(buckets_path, percents=None, **kwargs):
+#    if percents is None:
+#        percents = [25.0, 50.0, 75.0]
+#    return {"percentiles_bucket": {"buckets_path": buckets_path, "percents": percents}}
 
 
-def agg_extended_stats(field, script=False, sigma=3,
+def agg_extended_stats_bucket(buckets_path, script=False, sigma=None, format=None,
+                       getter_count=None, getter_min=None, getter_max=None, getter_avg=None,
+                       getter_sum=None, getter_sum_of_squares=None, getter_variance=None,
+                       getter_deviation=None, getter_deviation_upper=None, getter_deviation_lower=None, **kwargs):
+    getters = {}
+
+    add_getter(getters, getter_count, "count")
+    add_getter(getters, getter_min, "min")
+    add_getter(getters, getter_max, "max")
+    add_getter(getters, getter_avg, "avg")
+    add_getter(getters, getter_sum, "sum")
+    add_getter(getters, getter_sum_of_squares, "sum_of_squares")
+    add_getter(getters, getter_variance, "variance")
+    add_getter(getters, getter_deviation, "std_deviation")
+    add_getter(getters, getter_deviation_upper, "upper", additional_level="std_deviation_bounds")
+    add_getter(getters, getter_deviation_lower, "lower", additional_level="std_deviation_bounds")
+
+    body = {"extended_stats_bucket": {
+        **{"buckets_path": buckets_path},
+        **({"format": format} if format is not None else {}),
+        **({"sigma": sigma} if sigma is not None else {}),
+        **({"script": script} if script is not None else {})}
+    }
+
+    return {"body": body, "getters": getters}
+
+def agg_extended_stats(field, script=False, sigma=3, gap_policy="skip", format=None,
                        getter_count=None, getter_min=None, getter_max=None, getter_avg=None,
                        getter_sum=None, getter_sum_of_squares=None, getter_variance=None,
                        getter_deviation=None, getter_deviation_upper=None, getter_deviation_lower=None, **kwargs):
