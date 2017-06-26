@@ -429,6 +429,15 @@ def agg_histogram(field, interval, getter_doc_count=None, getter_key=None, gette
         return {"body": body, "getters": getters_new, "getter_updater": getter_updater, "sub_aggs": kwargs}
 
 
+    def agg_filters(filters, getter_key=None, getter_doc_count=None, is_axis=True, other_bucket_key=None, **kwargs):
+        if isinstance(filters, list):
+            return __agg_filters_anonymous(filters, getter_doc_count, other_bucket_key, is_axis, **kwargs)
+        elif isinstance(filters, dict):
+            return __agg_filters_named(filters, getter_key, getter_doc_count, other_bucket_key, is_axis, **kwargs)
+        else:
+            raise ValueError("Unsupported 'filters' type (use list or dict)")
+
+
 ##############################################################################################
 # VALUE AGGS                                                                                 #
 ##############################################################################################
@@ -504,6 +513,13 @@ def agg_value_count(field, script=False, **kwargs):
     return {"value_count": {("script" if script else "field"): field}}
 
 
+def agg_percentile(field, percents=None, getter=None, **kwargs):
+    getters = {}
+    add_getter(getters, getter, "values")
+    body = {"percentiles": {"field": field, **({"percents": percents} if percents is not None else {})}}
+    return {"body": body, "getters": getters}
+
+
 ##############################################################################################
 # PIPELINE AGGS                                                                              #
 ##############################################################################################
@@ -530,7 +546,6 @@ def agg_derivative_bucket(buckets_path, format=None, gap_policy=None, **kwargs):
             **({"gap_policy": gap_policy} if gap_policy is not None else {})
         }
     }
-
     return body
 
 
@@ -576,7 +591,6 @@ def agg_sum_bucket(buckets_path, format=None, gap_policy=None, **kwargs):
         }
     }
     return body
-
 
 
 def agg_stats_bucket(buckets_path, format=None, gap_policy=None,
@@ -633,19 +647,11 @@ def agg_bucket_script(buckets_path, script, gap_policy=None, format=None, **kwar
     return body
 
 
-#@simple_value_agg
-#def agg_percentiles_bucket(buckets_path, percents=None, **kwargs):
-#    if percents is None:
-#        percents = [25.0, 50.0, 75.0]
-#    return {"percentiles_bucket": {"buckets_path": buckets_path, "percents": percents}}
-
-
 def agg_extended_stats_bucket(buckets_path, sigma=None, format=None,
                        getter_count=None, getter_min=None, getter_max=None, getter_avg=None,
                        getter_sum=None, getter_sum_of_squares=None, getter_variance=None,
                        getter_deviation=None, getter_deviation_upper=None, getter_deviation_lower=None, **kwargs):
     getters = {}
-
     add_getter(getters, getter_count, "count")
     add_getter(getters, getter_min, "min")
     add_getter(getters, getter_max, "max")
@@ -656,22 +662,20 @@ def agg_extended_stats_bucket(buckets_path, sigma=None, format=None,
     add_getter(getters, getter_deviation, "std_deviation")
     add_getter(getters, getter_deviation_upper, "upper", additional_level="std_deviation_bounds")
     add_getter(getters, getter_deviation_lower, "lower", additional_level="std_deviation_bounds")
-
     body = {"extended_stats_bucket": {
         **{"buckets_path": buckets_path},
         **({"format": format} if format is not None else {}),
         **({"sigma": sigma} if sigma is not None else {})
         }
     }
-
     return {"body": body, "getters": getters}
+
 
 def agg_extended_stats(field, script=False, sigma=3, gap_policy="skip", format=None,
                        getter_count=None, getter_min=None, getter_max=None, getter_avg=None,
                        getter_sum=None, getter_sum_of_squares=None, getter_variance=None,
                        getter_deviation=None, getter_deviation_upper=None, getter_deviation_lower=None, **kwargs):
     getters = {}
-
     add_getter(getters, getter_count, "count")
     add_getter(getters, getter_min, "min")
     add_getter(getters, getter_max, "max")
@@ -682,26 +686,13 @@ def agg_extended_stats(field, script=False, sigma=3, gap_policy="skip", format=N
     add_getter(getters, getter_deviation, "std_deviation")
     add_getter(getters, getter_deviation_upper, "upper", additional_level="std_deviation_bounds")
     add_getter(getters, getter_deviation_lower, "lower", additional_level="std_deviation_bounds")
-
     body = {"extended_stats": {("script" if script else "field"): field, "sigma": sigma}}
-
     return {"body": body, "getters": getters}
 
 
-def agg_percentile(field, percents=None, getter=None, **kwargs):
-    getters = {}
-    add_getter(getters, getter, "values")
-    body = {"percentiles": {"field": field, **({"percents": percents} if percents is not None else {})}}
-    return {"body": body, "getters": getters}
-
-
-def agg_filters(filters, getter_key=None, getter_doc_count=None, is_axis=True, other_bucket_key=None, **kwargs):
-    if isinstance(filters, list):
-        return __agg_filters_anonymous(filters, getter_doc_count, other_bucket_key, is_axis, **kwargs)
-    elif isinstance(filters, dict):
-        return __agg_filters_named(filters, getter_key, getter_doc_count, other_bucket_key, is_axis, **kwargs)
-    else:
-        raise ValueError("Unsupported 'filters' type (use list or dict)")
+##############################################################################################
+# PRIVATE                                                                                    #
+##############################################################################################
 
 
 @bucket_agg
