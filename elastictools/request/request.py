@@ -19,7 +19,8 @@ def aggregation_linker(aggregation):
     sub_aggs_bodys = {}
 
     if "sub_aggs" in aggregation:
-        sub_aggs_bodys = {key: aggregation["sub_aggs"][key]["body"] for key in aggregation["sub_aggs"]}
+        sub_aggs_bodys = {key: aggregation["sub_aggs"][key]["body"] for key in aggregation["sub_aggs"]
+                          if aggregation["sub_aggs"][key].get("body") is not None}
         for aggr_key, aggr_value in aggregation["sub_aggs"].items():
             for getter_key, getter_value in aggr_value["getters"].items():
                 getters.update(aggregation["getter_updater"](getter_value, aggr_key, getter_key))
@@ -65,7 +66,7 @@ def axis_multi_bucket_getter_updater(getter, key, getter_name):
             return None
         if isinstance(response_body["buckets"], dict):
             bucket_id = list(response_body["buckets"].keys())[bucket_id]
-        return getter(response_body["buckets"][bucket_id][key], *args, **kwargs)
+        return getter(response_body["buckets"][bucket_id].get(key), *args, **kwargs)
     return {getter_name: deeper_getter}
 
 
@@ -101,7 +102,18 @@ def multi_bucket_axis_maker(next_axis=None, next_axis_name=None):
             return {0: {}}
         if next_axis_name is None:
             return {i: {} for i in range(len(response_body["buckets"]))}
+        if isinstance(response_body["buckets"], dict):
+            return {i: next_axis(response_body["buckets"][list(response_body["buckets"].keys())[i]][next_axis_name])
+                    for i in range(len(response_body["buckets"]))}
         return {i: next_axis(response_body["buckets"][i][next_axis_name]) for i in range(len(response_body["buckets"]))}
+    return axis
+
+
+def percentile_axis_maker(next_axis=None, next_axis_name=None):
+    def axis(response_body):
+        if len(response_body["values"]) == 0:
+            return {0: {}}
+        return {i: {} for i in response_body["values"].keys()}
 
     return axis
 
@@ -133,7 +145,7 @@ def request(query=None, fieldlist=None, sorting=None, **aggs):
     if query is None:
         query = {}
         pass
-    aggs_bodys = {key: aggs[key]["body"] for key in aggs}
+    aggs_bodys = {key: aggs[key]["body"] for key in aggs if aggs[key].get('body')}
     body = {
         **(
             {
@@ -165,7 +177,7 @@ def request(query=None, fieldlist=None, sorting=None, **aggs):
 
     def getter_updater(p_getter, key):
         def deeper_getter(response_body, *args, **kwargs):
-            return p_getter(response_body["aggregations"][key], *args, **kwargs)
+            return p_getter(response_body["aggregations"].get(key), *args, **kwargs)
         return deeper_getter
     getters = {key: getter_updater(aggs[aggr]["getters"][key], aggr) for aggr in aggs for key in aggs[aggr]["getters"]}
     axis = lambda x: {}
@@ -224,7 +236,7 @@ def flt_or(*filters):
 def flt_eq(field, value):
     if isinstance(value, list):
         return {"terms": {field: value}}
-    elif isinstance(value, str) and value[-1] == '*' and value.count("*") == 1 and value.count("?") == 0:
+    elif isinstance(value, str) and value.count("*") == 1 and value.count("?") == 0 and value[-1] == '*':
         return {"prefix": {field: value[:-1]}}
     elif isinstance(value, str) and value.count("*") + value.count("?") > 0:
         return {"wildcard": {field: value}}
@@ -312,7 +324,7 @@ def agg_reverse_nested(getter=None, **kwargs):
 
 
 @bucket_agg
-def agg_terms(field, script=False, size=10000, min_doc_count=None, order=None, getter_doc_count=None, getter_key=None, is_axis=True, **kwargs):
+def agg_terms(field, script=False, size=10000, min_doc_count=None, order=None, getter_doc_count=None, getter_key=None, is_axis=True, missing=None, **kwargs):
     getters = {}
     add_getter(getters, getter_doc_count, "doc_count")
     add_getter(getters, getter_key, "key")
@@ -362,7 +374,8 @@ def agg_terms(field, script=False, size=10000, min_doc_count=None, order=None, g
     body = {"terms": {
         **{"script" if script else "field": field, "size": size},
         **({"min_doc_count": min_doc_count} if min_doc_count is not None else {}),
-        **({"order": order} if order is not None else {})}
+        **({"order": order} if order is not None else {}),
+        **({"missing": missing} if missing is not None else {})}
     }
     if is_axis and not isinstance(is_axis, list):
         return {"body": body, "getters": getters_new, "getter_updater": getter_updater, "sub_aggs": kwargs, "axis_maker": multi_bucket_axis_maker}
@@ -429,19 +442,13 @@ def agg_histogram(field, interval, getter_doc_count=None, getter_key=None, gette
         return {"body": body, "getters": getters_new, "getter_updater": getter_updater, "sub_aggs": kwargs}
 
 
-    def agg_filters(filters, getter_key=None, getter_doc_count=None, is_axis=True, other_bucket_key=None, **kwargs):
-        if isinstance(filters, list):
-            return __agg_filters_anonymous(filters, getter_doc_count, other_bucket_key, is_axis, **kwargs)
-        elif isinstance(filters, dict):
-            return __agg_filters_named(filters, getter_key, getter_doc_count, other_bucket_key, is_axis, **kwargs)
-        else:
-            raise ValueError("Unsupported 'filters' type (use list or dict)")
-
-
 ##############################################################################################
 # VALUE AGGS                                                                                 #
 ##############################################################################################
 
+
+def agg_const(value, getter=None, **kwargs):
+    return {"getters": {getter: lambda *args, **kwargs: value}}
 
 def simple_value_agg(agg):
     def decorated_agg(*args, getter=None, **kwargs):
@@ -513,145 +520,102 @@ def agg_value_count(field, script=False, **kwargs):
     return {"value_count": {("script" if script else "field"): field}}
 
 
-def agg_percentile(field, percents=None, getter=None, **kwargs):
-    getters = {}
-    add_getter(getters, getter, "values")
-    body = {"percentiles": {"field": field, **({"percents": percents} if percents is not None else {})}}
-    return {"body": body, "getters": getters}
-
-
-##############################################################################################
-# PIPELINE AGGS                                                                              #
-##############################################################################################
+@simple_value_agg
+def agg_avg_bucket(buckets_path, **kwargs):
+    return {"avg_bucket": {"buckets_path": buckets_path}}
 
 
 @simple_value_agg
-def agg_avg_bucket(buckets_path, format=None, gap_policy=None, **kwargs):
-    body = {
-        "avg_bucket": {
-           "buckets_path": buckets_path,
-            **({"format": format} if format is not None else {}),
-            **({"gap_policy": gap_policy} if gap_policy is not None else {})
-        }
-    }
-    return body
+def agg_derivative_bucket(buckets_path, **kwargs):
+    return {"derivative_bucket": {"buckets_path": buckets_path}}
 
 
 @simple_value_agg
-def agg_derivative_bucket(buckets_path, format=None, gap_policy=None, **kwargs):
-    body = {
-        "derivative_bucket": {
-            "buckets_path": buckets_path,
-            **({"format": format} if format is not None else {}),
-            **({"gap_policy": gap_policy} if gap_policy is not None else {})
-        }
-    }
-    return body
+def agg_max_bucket(buckets_path, **kwargs):
+    return {"max_bucket": {"buckets_path": buckets_path}}
 
 
-def agg_max_bucket(buckets_path, format=None, gap_policy=None, getter_keys=None, return_getter_keys_list=False, **kwargs):
+@simple_value_agg
+def agg_min_bucket(buckets_path, **kwargs):
+    return {"min_bucket": {"buckets_path": buckets_path}}
+
+
+@simple_value_agg
+def agg_sum_bucket(buckets_path, **kwargs):
+    return {"sum_bucket": {"buckets_path": buckets_path}}
+
+
+@simple_value_agg
+def agg_stats_bucket(buckets_path, **kwargs):
+    return {"stats_bucket": {"buckets_path": buckets_path}}
+
+
+@simple_value_agg
+def agg_extended_stats_bucket(buckets_path, **kwargs):
+    return {"extended_stats_bucket": {"buckets_path": buckets_path}}
+
+
+@simple_value_agg
+def agg_cumulative_sum(buckets_path, **kwargs):
+    return {"cumulative_sum": {"buckets_path": buckets_path}}
+
+
+@simple_value_agg
+def agg_bucket_selector(buckets_path, script, **kwargs):
+    return {"bucket_selector": {"buckets_path": buckets_path, "script": script}}
+
+
+@simple_value_agg
+def agg_bucket_script(buckets_path, script, **kwargs):
+    return {"bucket_script": {"buckets_path": buckets_path, "script": script}}
+
+
+def agg_percentiles_bucket(buckets_path, percents=None, getter_key=None, getter_value=None, is_axis=True, **kwargs):
     getters = {}
-    if return_getter_keys_list == False:
-        add_getter(getters, getter_keys, 0, additional_level="keys")
+
+    if getter_key is not None:
+        if isinstance(is_axis, list):
+            def split_factory(bucket_key):
+                def result_split(response_body, *args, **kwargs2):
+                    return bucket_key
+
+                return result_split
+
+            for key2 in is_axis:
+                getters[getter_key + "_" + str(key2)] = split_factory(key2)
+        elif is_axis:
+            getters[getter_key] = lambda response_body, bucket_id, *args, **kwargs2: bucket_id
+        else:
+            getters[getter_key] = lambda response_body, *args, **kwargs2: list(response_body["values"].keys())
+
+    if getter_value is not None:
+        if isinstance(is_axis, list):
+            def split_factory(bucket_key):
+                def result_split(response_body, *args, **kwargs2):
+                    return response_body["values"][bucket_key]
+
+                return result_split
+
+            for key2 in is_axis:
+                getters[getter_value + "_" + str(key2)] = split_factory(key2)
+        elif is_axis:
+            getters[getter_value] = lambda response_body, bucket_id, *args, **kwargs2: response_body["values"][
+                bucket_id]
+        else:
+            getters[getter_value] = lambda response_body, *args, **kwargs2: list(response_body["values"].values())
+    body = {"percentiles_bucket": {"buckets_path": buckets_path, **({"percents": percents} if percents is not None else {})}}
+    if is_axis and not isinstance(is_axis, list):
+        return {"body": body, "getters": getters, "axis": percentile_axis_maker(None, None)}
     else:
-        add_getter(getters, getter_keys, "keys")
-    body = {
-        "max_bucket": {
-            "buckets_path": buckets_path,
-            **({"format": format} if format is not None else {}),
-            **({"gap_policy": gap_policy} if gap_policy is not None else {})
-        }
-    }
-    return {"body": body, "getters": getters}
+        return {"body": body, "getters": getters}
 
 
-def agg_min_bucket(buckets_path, format=None, gap_policy=None, getter_keys=None, return_getter_keys_list=False, **kwargs):
-    getters = {}
-    if return_getter_keys_list == False:
-        add_getter(getters, getter_keys, 0, additional_level="keys")
-    else:
-        add_getter(getters, getter_keys, "keys")
-    body = {
-        "min_bucket": {
-            "buckets_path": buckets_path,
-            **({"format": format} if format is not None else {}),
-            **({"gap_policy": gap_policy} if gap_policy is not None else {})
-        }
-    }
-    return {"body": body, "getters": getters}
-
-
-@simple_value_agg
-def agg_sum_bucket(buckets_path, format=None, gap_policy=None, **kwargs):
-    body = {
-        "sum_bucket": {
-            "buckets_path": buckets_path,
-            **({"format": format} if format is not None else {}),
-            **({"gap_policy": gap_policy} if gap_policy is not None else {})
-        }
-    }
-    return body
-
-
-def agg_stats_bucket(buckets_path, format=None, gap_policy=None,
-                       getter_count=None, getter_min=None, getter_max=None, getter_avg=None,
-                       getter_sum=None, **kwargs):
-    getters = {}
-    add_getter(getters, getter_count, "count")
-    add_getter(getters, getter_min, "min")
-    add_getter(getters, getter_max, "max")
-    add_getter(getters, getter_avg, "avg")
-    add_getter(getters, getter_sum, "sum")
-    body = {
-        "stats_bucket": {
-            "buckets_path": buckets_path,
-            **({"format": format} if format is not None else {}),
-            **({"gap_policy": gap_policy} if gap_policy is not None else {})
-        }
-    }
-    return {"body": body, "getters": getters}
-
-
-@simple_value_agg
-def agg_cumulative_sum(buckets_path, format=None, **kwargs):
-    body = {
-        "cumulative_sum": {
-            "buckets_path": buckets_path,
-            **({"format": format} if format is not None else {})
-        }
-    }
-    return body
-
-
-def agg_bucket_selector(buckets_path, script, gap_policy=None):
-    body = {
-        "bucket_selector": {
-            "buckets_path": buckets_path,
-            "script": script,
-            **({"gap_policy": gap_policy} if gap_policy is not None else {}),
-        }
-    }
-    return {"body": body, "getters": {}}
-
-
-@simple_value_agg
-def agg_bucket_script(buckets_path, script, gap_policy=None, format=None, **kwargs):
-    body = {
-        "bucket_script": {
-            "buckets_path": buckets_path,
-            "script": script,
-            **({"format": format} if format is not None else {}),
-            **({"gap_policy": gap_policy} if gap_policy is not None else {}),
-        }
-    }
-    return body
-
-
-def agg_extended_stats_bucket(buckets_path, sigma=None, format=None,
+def agg_extended_stats(field, script=False, sigma=3,
                        getter_count=None, getter_min=None, getter_max=None, getter_avg=None,
                        getter_sum=None, getter_sum_of_squares=None, getter_variance=None,
                        getter_deviation=None, getter_deviation_upper=None, getter_deviation_lower=None, **kwargs):
     getters = {}
+
     add_getter(getters, getter_count, "count")
     add_getter(getters, getter_min, "min")
     add_getter(getters, getter_max, "max")
@@ -662,37 +626,54 @@ def agg_extended_stats_bucket(buckets_path, sigma=None, format=None,
     add_getter(getters, getter_deviation, "std_deviation")
     add_getter(getters, getter_deviation_upper, "upper", additional_level="std_deviation_bounds")
     add_getter(getters, getter_deviation_lower, "lower", additional_level="std_deviation_bounds")
-    body = {"extended_stats_bucket": {
-        **{"buckets_path": buckets_path},
-        **({"format": format} if format is not None else {}),
-        **({"sigma": sigma} if sigma is not None else {})
-        }
-    }
-    return {"body": body, "getters": getters}
 
-
-def agg_extended_stats(field, script=False, sigma=3, gap_policy="skip", format=None,
-                       getter_count=None, getter_min=None, getter_max=None, getter_avg=None,
-                       getter_sum=None, getter_sum_of_squares=None, getter_variance=None,
-                       getter_deviation=None, getter_deviation_upper=None, getter_deviation_lower=None, **kwargs):
-    getters = {}
-    add_getter(getters, getter_count, "count")
-    add_getter(getters, getter_min, "min")
-    add_getter(getters, getter_max, "max")
-    add_getter(getters, getter_avg, "avg")
-    add_getter(getters, getter_sum, "sum")
-    add_getter(getters, getter_sum_of_squares, "sum_of_squares")
-    add_getter(getters, getter_variance, "variance")
-    add_getter(getters, getter_deviation, "std_deviation")
-    add_getter(getters, getter_deviation_upper, "upper", additional_level="std_deviation_bounds")
-    add_getter(getters, getter_deviation_lower, "lower", additional_level="std_deviation_bounds")
     body = {"extended_stats": {("script" if script else "field"): field, "sigma": sigma}}
+
     return {"body": body, "getters": getters}
 
 
-##############################################################################################
-# PRIVATE                                                                                    #
-##############################################################################################
+def agg_percentile(field, percents=None, getter_key=None, getter_value=None, is_axis=True, **kwargs):
+    getters = {}
+
+    if getter_key is not None:
+        if isinstance(is_axis, list):
+            def split_factory(bucket_key):
+                def result_split(response_body, *args, **kwargs2):
+                    return bucket_key
+                return result_split
+            for key2 in is_axis:
+                getters[getter_key + "_" + str(key2)] = split_factory(key2)
+        elif is_axis:
+            getters[getter_key] = lambda response_body, bucket_id, *args, **kwargs2: bucket_id
+        else:
+            getters[getter_key] = lambda response_body, *args, **kwargs2: list(response_body["values"].keys())
+
+    if getter_value is not None:
+        if isinstance(is_axis, list):
+            def split_factory(bucket_key):
+                def result_split(response_body, *args, **kwargs2):
+                    return response_body["values"][bucket_key]
+                return result_split
+            for key2 in is_axis:
+                getters[getter_key + "_" + str(key2)] = split_factory(key2)
+        elif is_axis:
+            getters[getter_value] = lambda response_body, bucket_id, *args, **kwargs2: response_body["values"][bucket_id]
+        else:
+            getters[getter_value] = lambda response_body, *args, **kwargs2: list(response_body["values"].values())
+    body = {"percentiles": {"field": field, **({"percents": percents} if percents is not None else {})}}
+    if is_axis and not isinstance(is_axis, list):
+        return {"body": body, "getters": getters, "axis": percentile_axis_maker(None, None)}
+    else:
+        return {"body": body, "getters": getters}
+
+
+def agg_filters(filters, getter_key=None, getter_doc_count=None, is_axis=True, other_bucket_key=None, **kwargs):
+    if isinstance(filters, list):
+        return __agg_filters_anonymous(filters, getter_doc_count, other_bucket_key, is_axis, **kwargs)
+    elif isinstance(filters, dict):
+        return __agg_filters_named(filters, getter_key, getter_doc_count, other_bucket_key, is_axis, **kwargs)
+    else:
+        raise ValueError("Unsupported 'filters' type (use list or dict)")
 
 
 @bucket_agg
@@ -791,6 +772,18 @@ def __agg_filters_named(filters, getter_key, getter_doc_count, other_bucket_key,
     getters_new = {}
     for getter in getters:
         getters_new = {**getters_new, **getter_factory(getter)}
+    if getter_key is not None:
+        if isinstance(is_axis, list):
+            def split_factory(bucket_key):
+                def result_split(response_body, *args, **kwargs2):
+                    return bucket_key
+                return result_split
+            for key2 in is_axis:
+                getters_new[getter_key + "_" + str(key2)] = split_factory(key2)
+        elif is_axis:
+            getters_new[getter_key] = lambda response_body, bucket_id, *args, **kwargs2: list(response_body["buckets"].keys())[bucket_id]
+        else:
+            getters_new[getter_key] = lambda response_body, *args, **kwargs2: list(response_body["buckets"].keys())
 
     if isinstance(is_axis, list):
         getter_updater = split_multi_bucket_getter_updater_factory(is_axis)
